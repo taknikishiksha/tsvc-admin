@@ -1,97 +1,134 @@
 <?php
 
-namespace App\Http;
+namespace App\Console;
 
-use Illuminate\Foundation\Http\Kernel as HttpKernel;
+use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
-class Kernel extends HttpKernel
+class Kernel extends ConsoleKernel
 {
     /**
-     * The application's global HTTP middleware stack.
+     * Explicitly register commands (Owner Reports)
      */
-    protected $middleware = [
-        \App\Http\Middleware\TrustProxies::class,
-        \Illuminate\Http\Middleware\HandleCors::class,
-        \App\Http\Middleware\PreventRequestsDuringMaintenance::class,
-        \Illuminate\Foundation\Http\Middleware\ValidatePostSize::class,
-        \App\Http\Middleware\TrimStrings::class,
-        \Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull::class,
+    protected $commands = [
+        \App\Console\Commands\WeeklyOwnerSummary::class,
+        \App\Console\Commands\MonthlyOwnerSummary::class,
     ];
 
     /**
-     * The application's route middleware groups.
+     * Define the application's command schedule.
      */
-    protected $middlewareGroups = [
-        'web' => [
-            \App\Http\Middleware\EncryptCookies::class,
-            \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
-            \Illuminate\Session\Middleware\StartSession::class,
-            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
-            \App\Http\Middleware\VerifyCsrfToken::class,
-            \Illuminate\Routing\Middleware\SubstituteBindings::class,
-            \Illuminate\Http\Middleware\HandlePrecognitiveRequests::class,
+    protected function schedule(Schedule $schedule): void
+    {
+        /*
+        |--------------------------------------------------------------------------
+        | DAILY / SYSTEM MAINTENANCE TASKS
+        |--------------------------------------------------------------------------
+        */
 
-            // Optional: Language middleware if present in your project
-            \App\Http\Middleware\LanguageMiddleware::class,
-        ],
+        // Daily cleanup of expired document submissions (12:00 AM)
+        $schedule->command('cleanup:documents')
+            ->daily()
+            ->description('Clean up expired document submissions')
+            ->appendOutputTo(storage_path('logs/cleanup.log'));
 
-        'api' => [
-            \Illuminate\Routing\Middleware\ThrottleRequests::class . ':api',
-            \Illuminate\Routing\Middleware\SubstituteBindings::class,
-            \Illuminate\Http\Middleware\HandlePrecognitiveRequests::class,
-        ],
-    ];
+        // Daily reminder emails for expiring submissions (10:00 AM)
+        $schedule->command('documents:send-reminders')
+            ->dailyAt('10:00')
+            ->description('Send reminder emails for expiring document submissions')
+            ->appendOutputTo(storage_path('logs/reminders.log'));
+
+        // Demo follow-up Telegram reminder (10:00 AM)
+        $schedule->command('demo:followup-reminder')
+            ->dailyAt('10:00')
+            ->description('Send Telegram reminders for pending demo follow-ups')
+            ->appendOutputTo(storage_path('logs/demo-followup-reminder.log'));
+
+        // OTP cleanup (2:00 AM)
+        $schedule->command('otp:cleanup')
+            ->dailyAt('02:00')
+            ->description('Clean up expired OTP verification records');
+
+        // Daily database backup (11:30 PM)
+        $schedule->command('backup:run --only-db')
+            ->dailyAt('23:30')
+            ->description('Daily database backup');
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | ANALYTICS & REPORTING
+        |--------------------------------------------------------------------------
+        */
+
+        // Weekly analytics report (Monday 9:00 AM)
+        $schedule->command('analytics:generate-weekly')
+            ->weeklyOn(1, '09:00')
+            ->description('Generate weekly analytics report');
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | OWNER TELEGRAM / DASHBOARD SUMMARIES
+        |--------------------------------------------------------------------------
+        */
+
+        // Weekly Owner Summary (Monday 9:00 AM)
+        $schedule->command('report:weekly-owner-summary')
+            ->weeklyOn(1, '09:00')
+            ->withoutOverlapping()
+            ->description('Send weekly owner performance summary')
+            ->appendOutputTo(storage_path('logs/owner-weekly-summary.log'));
+
+        // 🚨 Revenue Dip Alert (Monday 10:00 AM)
+        $schedule->command('alert:revenue-dip')
+            ->weeklyOn(1, '10:00')
+            ->withoutOverlapping()
+            ->description('Send alert if weekly revenue conversion dips')
+            ->appendOutputTo(storage_path('logs/revenue-dip-alert.log'));
+
+        // 🚨 Teacher-specific Conversion Dip Alert (Monday 10:15 AM)
+        // Offset from owner summary → avoids message collision
+        $schedule->command('teacher:conversion-dip-alert')
+            ->weeklyOn(1, '10:15')
+            ->withoutOverlapping()
+            ->description('Send teacher-wise conversion dip alerts')
+            ->appendOutputTo(storage_path('logs/teacher-conversion-dip-alert.log'));
+
+        // Monthly Owner Summary (1st day, 9:15 AM)
+        $schedule->command('report:monthly-owner-summary')
+            ->monthlyOn(1, '09:15')
+            ->withoutOverlapping()
+            ->description('Send monthly owner performance summary')
+            ->appendOutputTo(storage_path('logs/owner-monthly-summary.log'));
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | PAYMENTS
+        |--------------------------------------------------------------------------
+        */
+
+        // Monthly payout processing (1st of month 10:00 AM)
+        $schedule->command('payments:process-payouts')
+            ->monthlyOn(1, '10:00')
+            ->description('Process monthly teacher payouts');
+    }
 
     /**
-     * The application's route middleware aliases.
+     * Register the commands for the application.
      */
-    protected $middlewareAliases = [
-        'auth' => \App\Http\Middleware\Authenticate::class,
-        'auth.basic' => \Illuminate\Auth\Middleware\AuthenticateWithBasicAuth::class,
-        'auth.session' => \Illuminate\Session\Middleware\AuthenticateSession::class,
-        'cache.headers' => \Illuminate\Http\Middleware\SetCacheHeaders::class,
-        'can' => \Illuminate\Auth\Middleware\Authorize::class,
-        'guest' => \App\Http\Middleware\RedirectIfAuthenticated::class,
-        'password.confirm' => \Illuminate\Auth\Middleware\RequirePassword::class,
-        'signed' => \Illuminate\Routing\Middleware\ValidateSignature::class,
-        'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
-        'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
-
-        // Our profile completion middleware alias
-        'profile.complete' => \App\Http\Middleware\EnsureProfileComplete::class,
-
-        // Keep your existing custom middleware aliases (ensure these classes exist)
-        'admin' => \App\Http\Middleware\AdminMiddleware::class,
-        'teacher' => \App\Http\Middleware\TeacherMiddleware::class,
-        'client' => \App\Http\Middleware\ClientMiddleware::class,
-
-        // Generic role checker middleware (usage: ->middleware('role:client'))
-        'role' => \App\Http\Middleware\RoleMiddleware::class,
-
-        // Optional dedicated ensure-superadmin alias (only if you have EnsureSuperAdmin)
-        // If you don't have EnsureSuperAdmin remove this line or make it point to RoleMiddleware
-        'ensure.superadmin' => \App\Http\Middleware\EnsureSuperAdmin::class ?? \App\Http\Middleware\RoleMiddleware::class,
-    ];
+    protected function commands(): void
+    {
+        $this->load(__DIR__ . '/Commands');
+        require base_path('routes/console.php');
+    }
 
     /**
-     * The priority-sorted list of middleware.
+     * Application timezone for scheduler
      */
-    protected $middlewarePriority = [
-        \Illuminate\Cookie\Middleware\EncryptCookies::class,
-        \Illuminate\Session\Middleware\StartSession::class,
-        \Illuminate\View\Middleware\ShareErrorsFromSession::class,
-        \Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests::class,
-        \Illuminate\Routing\Middleware\ThrottleRequests::class,
-        \Illuminate\Routing\Middleware\ThrottleRequestsWithRedis::class,
-        \Illuminate\Contracts\Session\Middleware\AuthenticatesSessions::class,
-        \Illuminate\Routing\Middleware\SubstituteBindings::class,
-        \Illuminate\Auth\Middleware\Authorize::class,
-    ];
-
-    /**
-     * Precognitive middleware priority.
-     */
-    protected $precognitiveMiddlewarePriority = [
-        \Illuminate\Foundation\Http\Middleware\HandlePrecognitiveRequests::class,
-    ];
+    protected function scheduleTimezone(): string
+    {
+        return 'Asia/Kolkata';
+    }
 }
